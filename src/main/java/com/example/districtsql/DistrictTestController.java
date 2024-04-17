@@ -50,10 +50,16 @@ public class DistrictTestController {
         //  获取所有的省集合，然后遍历获取市区街道
         List<Map<String, Object>> provinceDistrictsList =  (List<Map<String, Object>>) fdistricts.get(0).get("districts");
 
+        // 深度优先搜索
         List<SysDistrict> districtList = new ArrayList<>();
-        getDistrictList(provinceDistrictsList, districtList, 0L);
-
+        depthFirstTraversal(provinceDistrictsList, districtList, 0L);
         System.out.println(districtList.size());
+
+        // 广度优先搜索
+        List<SysDistrict> districtList2 = new ArrayList<>();
+        breadthFirstTraversal(provinceDistrictsList, districtList2, 0L);
+        System.out.println(districtList2.size());
+
 
 //        int i = sysDistrictMapper.insertBatch(districtList);
 //        System.out.println("插入：" + i);
@@ -61,9 +67,6 @@ public class DistrictTestController {
 
     public static Long initId = 1L;
     static LocalDateTime now = LocalDateTime.now();
-
-    /** 用于广度优先搜索 */
-    static Queue<List<SysDistrict>> districtQueue = new ArrayDeque<>();
 
     public static Integer getLevel(String level){
         /*
@@ -73,7 +76,7 @@ public class DistrictTestController {
             district:区县
             street:街道
         */
-        /** 级别 1:省/自治区/直辖市 2:市级 3:县级 4:街道 */
+        /* 级别 1:省/自治区/直辖市 2:市级 3:县级 4:街道 */
         switch (level){
             case "province": return 1;
             case "city": return 2;
@@ -87,9 +90,10 @@ public class DistrictTestController {
         String code = "";
         try {
             code = (String) citycode;
-        }catch (Exception e){}
+        }catch (Exception ignored){}
         return code;
     }
+
     /**
      * 将高德接口返回的树状结构转化为list便于插入数据库表
      *
@@ -97,7 +101,8 @@ public class DistrictTestController {
      * @param districtList 最后要插入数据库的list
      * @param parentId 腹父级id
      */
-    private static void getDistrictList(List<Map<String, Object>> treeStructure, List<SysDistrict> districtList, Long parentId) {
+    // 深度优先遍历
+    private static void depthFirstTraversal(List<Map<String, Object>> treeStructure, List<SysDistrict> districtList, Long parentId) {
         for (Map<String, Object> districtMap : treeStructure) {
             SysDistrict district = new SysDistrict()
                     .setId(initId++).setPid(parentId)
@@ -111,10 +116,49 @@ public class DistrictTestController {
             districtList.add(district);
             List<Map<String, Object>> subTreeStructure = (List<Map<String, Object>>)districtMap.get("districts");
             if (subTreeStructure != null && subTreeStructure.size() > 0){
-                getDistrictList(subTreeStructure, districtList, district.getId());
+                depthFirstTraversal(subTreeStructure, districtList, district.getId());
+            }
+        }
+    }
+
+
+    public static Long initIdBreadth = 1L;
+    /** 用于广度优先搜索，保存树状结构 */
+    static Queue<List<Map<String, Object>>> districtQueue = new ArrayDeque<>();
+
+    /** 用于广度优先搜索，保存树状结构对应的父级id */
+    static Map<List<Map<String, Object>>, Long> districtQueueMap = new HashMap<>();
+
+    /**
+     * 广度优先遍历
+     */
+    private static void breadthFirstTraversal(List<Map<String, Object>> treeStructure, List<SysDistrict> districtList, Long parentId) {
+        for (Map<String, Object> districtMap : treeStructure) {
+            SysDistrict district = new SysDistrict()
+                    .setId(initIdBreadth++).setPid(parentId)
+                    .setCode((String)districtMap.get("adcode"))
+                    .setName((String)districtMap.get("name"))
+                    .setStatus(1).setRemark("")
+                    .setLevel(getLevel((String)districtMap.get("level")))
+                    .setCenter((String)districtMap.get("center"))
+                    .setCityCode(getCode(districtMap.get("citycode")))
+                    .setCreateTime(now).setUpdateTime(now);
+            districtList.add(district);
+            List<Map<String, Object>> subTreeStructure = (List<Map<String, Object>>)districtMap.get("districts");
+            if (subTreeStructure != null && subTreeStructure.size() > 0){
+                districtQueue.add(subTreeStructure);
+                districtQueueMap.put(subTreeStructure, district.getId());
             }
         }
 
+        // 执行广度优先搜索
+        while (!districtQueue.isEmpty()) {
+            List<Map<String, Object>> queueHeader = districtQueue.poll();
+            Long pid = districtQueueMap.get(queueHeader);
+            if (pid != null){
+                breadthFirstTraversal(queueHeader, districtList, pid);
+            }
+        }
     }
 
 }
